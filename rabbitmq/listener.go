@@ -37,6 +37,11 @@ func (e *listener) config() error {
 	}
 	defer ch.Close()
 
+	err = ch.ExchangeDeclare(e.exchange, "topic", true, false, false, false, nil)
+	if err != nil {
+		return err
+	}
+
 	_, err = ch.QueueDeclare(e.queue, true, false, false, false, nil)
 	return err
 }
