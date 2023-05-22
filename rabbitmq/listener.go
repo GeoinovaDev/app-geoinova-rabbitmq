@@ -74,6 +74,8 @@ func (e *listener) Listen(eventNames ...string) (<-chan events.Event, chan error
 	eventsChan := make(chan events.Event)
 	errorsChan := make(chan error)
 
+	fnNewMessage := e.fnNewMessage
+
 	go func() {
 		for msg := range msgs {
 			rawEventName, ok := msg.Headers[EVENT_NAME_HEADER]
@@ -90,7 +92,7 @@ func (e *listener) Listen(eventNames ...string) (<-chan events.Event, chan error
 				continue
 			}
 
-			event, err := e.fnNewMessage(eventName, msg.Body)
+			event, err := fnNewMessage(eventName, msg.Body)
 			if err != nil {
 				errorsChan <- err
 				continue
