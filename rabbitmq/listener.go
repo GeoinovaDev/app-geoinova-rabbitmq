@@ -41,7 +41,7 @@ func (e *listener) config() error {
 	return err
 }
 
-func (e *listener) Listen(eventNames ...string) (<-chan events.Event, <-chan error, error) {
+func (e *listener) Listen(eventNames ...string) (<-chan events.Event, chan error, error) {
 	ch, err := e.conn.Channel()
 	if err != nil {
 		return nil, nil, err
