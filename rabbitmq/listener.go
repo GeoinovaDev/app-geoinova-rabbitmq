@@ -57,7 +57,7 @@ func (e *listener) Listen(eventNames ...string) (<-chan events.Event, chan error
 	if err != nil {
 		return nil, nil, err
 	}
-	defer ch.Close()
+	// defer ch.Close()
 
 	for _, eventName := range eventNames {
 		err := ch.QueueBind(e.queue, eventName, e.exchange, false, nil)
@@ -73,6 +73,7 @@ func (e *listener) Listen(eventNames ...string) (<-chan events.Event, chan error
 
 	eventsChan := make(chan events.Event)
 	errorsChan := make(chan error)
+
 	go func() {
 		for msg := range msgs {
 			rawEventName, ok := msg.Headers[EVENT_NAME_HEADER]
