@@ -1,18 +1,19 @@
 package rabbitmq
 
 import (
-	"encoding/json"
 	"fmt"
 
-	"github.com/GeoinovaDev/domain-painel-geoinova/core"
 	"github.com/GeoinovaDev/domain-painel-geoinova/events"
 	"github.com/streadway/amqp"
 )
 
+type NewMessageCallback func(string, []byte) (events.Event, error)
+
 type listener struct {
-	conn     *amqp.Connection
-	exchange string
-	queue    string
+	conn         *amqp.Connection
+	exchange     string
+	queue        string
+	fnNewMessage NewMessageCallback
 }
 
 func NewListener(conn *amqp.Connection, exchange string, queue string) (*listener, error) {
@@ -28,6 +29,11 @@ func NewListener(conn *amqp.Connection, exchange string, queue string) (*listene
 	}
 
 	return e, nil
+}
+
+func (e *listener) OnNewMessage(fn NewMessageCallback) *listener {
+	e.fnNewMessage = fn
+	return e
 }
 
 func (e *listener) config() error {
@@ -83,20 +89,8 @@ func (e *listener) Listen(eventNames ...string) (<-chan events.Event, chan error
 				continue
 			}
 
-			var event events.Event
-
-			switch eventName {
-			case core.DETECCOES_CREATE_EVENT:
-				event = new(core.DeteccoesCreateEvent)
-			case core.DETECCOES_DELETE_EVENT:
-				event = new(core.DeteccoesDeleteEvent)
-			default:
-				errorsChan <- fmt.Errorf("evento desconhecido")
-				continue
-			}
-
-			err := json.Unmarshal(msg.Body, event)
-			if !ok {
+			event, err := e.fnNewMessage(eventName, msg.Body)
+			if err != nil {
 				errorsChan <- err
 				continue
 			}
