@@ -12,13 +12,13 @@ const (
 )
 
 type emitter struct {
-	conn     *amqp.Connection
+	session  *Session
 	exchange string
 }
 
-func NewEmitter(conn *amqp.Connection, exchange string) (*emitter, error) {
+func NewEmitter(session *Session, exchange string) (*emitter, error) {
 	e := &emitter{
-		conn:     conn,
+		session:  session,
 		exchange: exchange,
 	}
 
@@ -31,13 +31,9 @@ func NewEmitter(conn *amqp.Connection, exchange string) (*emitter, error) {
 }
 
 func (e *emitter) config() error {
-	ch, err := e.conn.Channel()
-	if err != nil {
-		return err
-	}
-	defer ch.Close()
-
-	return ch.ExchangeDeclare(e.exchange, "topic", true, false, false, false, nil)
+	return e.session.Channel(func(ch *amqp.Channel) error {
+		return ch.ExchangeDeclare(e.exchange, "topic", true, false, false, false, nil)
+	})
 }
 
 func (e *emitter) Emit(event events.Event) error {
@@ -46,17 +42,12 @@ func (e *emitter) Emit(event events.Event) error {
 		return err
 	}
 
-	ch, err := e.conn.Channel()
-	if err != nil {
-		return err
-	}
-	defer ch.Close()
-
-	msg := amqp.Publishing{
-		Headers:     amqp.Table{EVENT_NAME_HEADER: event.Name()},
-		Body:        payload,
-		ContentType: "application/json",
-	}
-
-	return ch.Publish(e.exchange, event.Name(), false, false, msg)
+	return e.session.Channel(func(ch *amqp.Channel) error {
+		msg := amqp.Publishing{
+			Headers:     amqp.Table{EVENT_NAME_HEADER: event.Name()},
+			Body:        payload,
+			ContentType: "application/json",
+		}
+		return ch.Publish(e.exchange, event.Name(), false, false, msg)
+	})
 }
