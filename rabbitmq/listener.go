@@ -10,23 +10,31 @@ import (
 type NewMessageCallback func(string, []byte) (events.Event, error)
 
 type listener struct {
-	conn         *amqp.Connection
+	session      *Session
 	exchange     string
 	queue        string
 	fnNewMessage NewMessageCallback
+	eventsChan   chan events.Event
+	errorsChan   chan error
 }
 
-func NewListener(conn *amqp.Connection, exchange string, queue string) (*listener, error) {
+func NewListener(session *Session, exchange string, queue string) (*listener, error) {
 	e := &listener{
-		conn:     conn,
-		exchange: exchange,
-		queue:    queue,
+		session:    session,
+		exchange:   exchange,
+		queue:      queue,
+		eventsChan: make(chan events.Event),
+		errorsChan: make(chan error),
 	}
 
 	err := e.config()
 	if err != nil {
 		return nil, err
 	}
+
+	session.OnReconnect(func(c *amqp.Connection) {
+
+	})
 
 	return e, nil
 }
@@ -36,73 +44,83 @@ func (e *listener) OnNewMessage(fn NewMessageCallback) *listener {
 	return e
 }
 
-func (e *listener) config() error {
-	ch, err := e.conn.Channel()
-	if err != nil {
-		return err
-	}
-	defer ch.Close()
+func (e *listener) config() (err error) {
+	return e.session.Channel(func(ch *amqp.Channel) error {
+		err = ch.ExchangeDeclare(e.exchange, "topic", true, false, false, false, nil)
+		if err != nil {
+			return err
+		}
 
-	err = ch.ExchangeDeclare(e.exchange, "topic", true, false, false, false, nil)
-	if err != nil {
+		_, err = ch.QueueDeclare(e.queue, true, false, false, false, nil)
 		return err
-	}
-
-	_, err = ch.QueueDeclare(e.queue, true, false, false, false, nil)
-	return err
+	})
 }
 
-func (e *listener) Listen(eventNames ...string) (<-chan events.Event, chan error, error) {
-	ch, err := e.conn.Channel()
-	if err != nil {
-		return nil, nil, err
-	}
-	// defer ch.Close()
+func (e *listener) Stream() <-chan events.Event {
+	return e.eventsChan
+}
 
-	for _, eventName := range eventNames {
-		err := ch.QueueBind(e.queue, eventName, e.exchange, false, nil)
-		if err != nil {
-			return nil, nil, err
+func (e *listener) Errors() chan error {
+	return e.errorsChan
+}
+
+func (e *listener) Listen(eventNames ...string) error {
+	err := e.session.Channel(func(ch *amqp.Channel) error {
+		for _, eventName := range eventNames {
+			err := ch.QueueBind(e.queue, eventName, e.exchange, false, nil)
+			if err != nil {
+				return err
+			}
 		}
-	}
 
-	msgs, err := ch.Consume(e.queue, "", false, false, false, false, nil)
+		return nil
+	})
+
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 
-	eventsChan := make(chan events.Event)
-	errorsChan := make(chan error)
+	e.session.OnReconnect(func(c *amqp.Connection) {
+		go e._listen()
+	})
 
-	fnNewMessage := e.fnNewMessage
+	go e._listen()
 
-	go func() {
+	return nil
+}
+
+func (e *listener) _listen() {
+	e.session.Channel(func(ch *amqp.Channel) error {
+		msgs, err := ch.Consume(e.queue, "", false, false, false, false, nil)
+		if err != nil {
+			return err
+		}
+
 		for msg := range msgs {
 			rawEventName, ok := msg.Headers[EVENT_NAME_HEADER]
 			if !ok {
-				errorsChan <- fmt.Errorf("mensagem não contem o cabecalho " + EVENT_NAME_HEADER)
+				e.errorsChan <- fmt.Errorf("mensagem não contem o cabecalho " + EVENT_NAME_HEADER)
 				msg.Nack(false, false)
 				continue
 			}
 
 			eventName, ok := rawEventName.(string)
 			if !ok {
-				errorsChan <- fmt.Errorf("mensagem não contem o cabecalho " + EVENT_NAME_HEADER)
+				e.errorsChan <- fmt.Errorf("mensagem não contem o cabecalho " + EVENT_NAME_HEADER)
 				msg.Nack(false, false)
 				continue
 			}
 
-			event, err := fnNewMessage(eventName, msg.Body)
+			event, err := e.fnNewMessage(eventName, msg.Body)
 			if err != nil {
-				errorsChan <- err
+				e.errorsChan <- err
 				continue
 			}
 
-			eventsChan <- event
+			e.eventsChan <- event
 			msg.Ack(false)
 		}
 
-	}()
-
-	return eventsChan, errorsChan, nil
+		return nil
+	})
 }
