@@ -1,4 +1,2 @@
-github.com/GeoinovaDev/domain-painel-geoinova v0.0.0-20230511162253-39c5f2e5bc75 h1:aNJRA16YJock7LMWOfha0Pqyq77yprTaSKoba3U67D0=
-github.com/GeoinovaDev/domain-painel-geoinova v0.0.0-20230511162253-39c5f2e5bc75/go.mod h1:P/10Qhk0PFq6TCJuZe/8EgbpVWqWPUziRbexqMGoopw=
 github.com/streadway/amqp v1.0.0 h1:kuuDrUJFZL1QYL9hUNuCxNObNzB0bV/ZG5jV3RWAQgo=
 github.com/streadway/amqp v1.0.0/go.mod h1:AZpEONHx3DKn8O/DFsRAY58/XVQiIPMTMB1SddzLXVw=
